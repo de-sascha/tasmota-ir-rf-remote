@@ -92,7 +92,8 @@ the pause. To get the code to send:
    about **7000** means the last bit is **0** (add nothing), about **6250**
    means it is **1** (add 1).
 
-If you are unsure, just try both: one of them makes the fan react.
+> [!TIP]
+> If you are unsure, just try both: one of them makes the fan react.
 
 My remote's codes, to show the pattern:
 
