@@ -19,7 +19,7 @@ Built automatically on [Tasmota 16.0.0](https://github.com/arendst/Tasmota/relea
 
 - Based on Tasmota 16.0.0. The ir-rf additions are unchanged.
 
-**Hardware test:** pending
+**Hardware test:** pending. Not to be used for air conditioners: see the known issue in v15.4.0-r1.
 
 
 ## [v15.4.0-r1] - 2026-10-20
@@ -37,4 +37,4 @@ First release, based on [Tasmota 15.4.0](https://github.com/arendst/Tasmota/rele
 - The *Start upgrade* button fetches the newest tested release of this
   project (after `OtaUrl 1`).
 
-**Hardware test:** passed on 2026-10-20: IoTorero AR01V3: 433 MHz send and receive (CREATE ceiling fan, protocol 41), infrared send and receive (TV, NEC). Air-conditioner IRHVAC not yet tried on a real unit with this build.
+**Hardware test:** failed on 2026-10-20, release withdrawn. Radio (433 MHz, CREATE fan) and TV infrared work, but IRHVAC commands to a GREE air conditioner about 3 m away arrived only about half the time (8 of 15). The official tasmota32-ir 15.4.0 on the same box and spot: every time (4 of 4). Switching off the radio receiver did not help. Under investigation.

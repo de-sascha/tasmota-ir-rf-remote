@@ -28,6 +28,13 @@
   </tr>
 </table>
 
+> [!CAUTION]
+> **Known issue (October 2026):** with this firmware, infrared commands to an air
+> conditioner arrive only about half the time from a few metres away. The official
+> `tasmota32-ir.bin` on the same box works every time. Radio and short TV codes are
+> fine. Until this is fixed there is no tested release, and boxes that control an
+> air conditioner should stay on the official firmware.
+
 ---
 
 ## Contents
