@@ -37,4 +37,4 @@ First release, based on [Tasmota 15.4.0](https://github.com/arendst/Tasmota/rele
 - The *Start upgrade* button fetches the newest tested release of this
   project (after `OtaUrl 1`).
 
-**Hardware test:** pending
+**Hardware test:** passed on 2026-10-20: IoTorero AR01V3: 433 MHz send and receive (CREATE ceiling fan, protocol 41), infrared send and receive (TV, NEC). Air-conditioner IRHVAC not yet tried on a real unit with this build.
