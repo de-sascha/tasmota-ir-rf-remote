@@ -11,6 +11,17 @@ means it has.
 
 <!-- releases: new entries go directly below this line -->
 
+## [v16.0.0-r1] - 2026-10-20
+
+Built automatically on [Tasmota 16.0.0](https://github.com/arendst/Tasmota/releases/tag/v16.0.0).
+
+### Changed
+
+- Based on Tasmota 16.0.0. The ir-rf additions are unchanged.
+
+**Hardware test:** pending
+
+
 ## [v15.4.0-r1] - 2026-10-20
 
 First release, based on [Tasmota 15.4.0](https://github.com/arendst/Tasmota/releases/tag/v15.4.0).
