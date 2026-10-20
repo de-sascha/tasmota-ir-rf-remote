@@ -1,0 +1,187 @@
+name: Build firmware
+
+# Builds this firmware on top of an official Tasmota release and publishes it
+# as a pre-release. A real-hardware test later turns it into a normal release
+# (workflow "Mark release as tested").
+#
+#   - every Monday: builds the newest Tasmota release, if it is not built yet
+#   - by hand (Actions -> Build firmware -> Run workflow): "latest" or a
+#     Tasmota tag like v15.4.0; builds the next free revision of it
+#   - pushing a tag like v15.4.0-r2: builds exactly that; CHANGELOG.md must
+#     already have a section "## [v15.4.0-r2]"
+#
+# Release names: v<Tasmota version>-r<revision>. See docs/how-it-is-built.md.
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      tasmota_version:
+        description: "Tasmota version (tag like v15.4.0, or latest)"
+        required: true
+        default: "latest"
+  push:
+    tags: ["v*-r*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PIO_ENV: tasmota32-ir-rf
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide what to build
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG%-r*}"
+            REV="${TAG##*-r}"
+            MODE=tag
+            grep -q "^## \[$TAG\]" CHANGELOG.md \
+              || { echo "::error::CHANGELOG.md has no section '## [$TAG]'"; exit 1; }
+          else
+            WANT="${{ github.event.inputs.tasmota_version }}"
+            if [ -z "$WANT" ] || [ "$WANT" = "latest" ]; then
+              VERSION="$(gh api repos/arendst/Tasmota/releases/latest -q .tag_name)"
+            else
+              VERSION="$WANT"
+            fi
+            [ -n "$VERSION" ] || { echo "::error::Could not find the Tasmota version"; exit 1; }
+            LAST=$(gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
+                   | grep -E "^${VERSION//./\\.}-r[0-9]+$" | sed 's/.*-r//' | sort -n | tail -1)
+            if [ "${{ github.event_name }}" = "schedule" ] && [ -n "$LAST" ]; then
+              echo "Tasmota $VERSION is already built (r$LAST). Nothing to do."
+              echo "SKIP=true" >> "$GITHUB_ENV"
+            fi
+            REV=$(( ${LAST:-0} + 1 ))
+            TAG="$VERSION-r$REV"
+            MODE=auto
+          fi
+          echo "Building $TAG (Tasmota $VERSION, revision $REV, $MODE)"
+          { echo "TAG=$TAG"; echo "TASMOTA_VERSION=$VERSION"; echo "REV=$REV"; echo "MODE=$MODE"; } >> "$GITHUB_ENV"
+
+      - name: Get official Tasmota
+        if: env.SKIP != 'true'
+        run: |
+          git clone --depth 1 --branch "$TASMOTA_VERSION" \
+            https://github.com/arendst/Tasmota.git tasmota-src
+
+      - name: Apply the ir-rf changes
+        if: env.SKIP != 'true'
+        run: |
+          python3 -I scripts/patch_tasmota.py tasmota-src
+          sed "s/CODE_IMAGE_STR='\"ir-rf\"'/CODE_IMAGE_STR='\"ir-rf-r$REV\"'/" \
+            platformio_override.ini > tasmota-src/platformio_override.ini
+          grep -q "ir-rf-r$REV" tasmota-src/platformio_override.ini \
+            || { echo "::error::Could not set the image name"; exit 1; }
+          git -C tasmota-src diff --stat
+
+      - name: Set up Python
+        if: env.SKIP != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: PlatformIO cache
+        if: env.SKIP != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ env.TASMOTA_VERSION }}-${{ env.PIO_ENV }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        if: env.SKIP != 'true'
+        run: pip install -U platformio
+
+      - name: Build
+        if: env.SKIP != 'true'
+        working-directory: tasmota-src
+        run: pio run -e "$PIO_ENV"
+
+      - name: Check the result
+        if: env.SKIP != 'true'
+        run: |
+          SRC=tasmota-src/build_output/firmware
+          mkdir -p out
+          cp "$SRC/$PIO_ENV.bin"         out/tasmota32-ir-rf.bin
+          cp "$SRC/$PIO_ENV.factory.bin" out/tasmota32-ir-rf.factory.bin
+
+          # An ESP32 image starts with byte E9; in the factory image the
+          # bootloader starts at 0x1000.
+          check_magic() {
+            MAGIC=$(xxd -s "$2" -l 1 -p "$1")
+            echo "$1: $(stat -c%s "$1") bytes, byte at $2 = 0x$MAGIC"
+            [ "$MAGIC" = "e9" ] || { echo "::error::$1 is not an ESP32 image"; exit 1; }
+          }
+          check_magic out/tasmota32-ir-rf.bin 0
+          check_magic out/tasmota32-ir-rf.factory.bin 4096
+
+          # App partition of the AR01V3 (safeboot layout): 2,949,120 bytes.
+          SIZE=$(stat -c%s out/tasmota32-ir-rf.bin)
+          LIMIT=2949120
+          echo "Flash use: $SIZE of $LIMIT bytes ($((SIZE * 100 / LIMIT)) %)"
+          [ "$SIZE" -le "$LIMIT" ] || { echo "::error::Image does not fit the app partition"; exit 1; }
+
+          strings out/tasmota32-ir-rf.bin | grep -q '"RfReceived"' || { echo "::error::Radio missing"; exit 1; }
+          strings out/tasmota32-ir-rf.bin | grep -q 'IRHVAC'       || { echo "::error::IRHVAC missing"; exit 1; }
+          strings out/tasmota32-ir-rf.bin | grep -q "ir-rf-r$REV"  || { echo "::error::Image name missing"; exit 1; }
+
+          (cd out && sha256sum tasmota32-ir-rf.bin tasmota32-ir-rf.factory.bin > SHA256SUMS.txt)
+          cat out/SHA256SUMS.txt
+
+      - name: Add the changelog entry
+        if: env.SKIP != 'true' && env.MODE == 'auto'
+        run: |
+          python3 -I - <<'PY'
+          import os, datetime, pathlib
+          tag, ver = os.environ["TAG"], os.environ["TASMOTA_VERSION"]
+          rev = int(os.environ["REV"])
+          p = pathlib.Path("CHANGELOG.md")
+          s = p.read_text()
+          marker = "<!-- releases: new entries go directly below this line -->"
+          assert marker in s, "marker missing in CHANGELOG.md"
+          if f"## [{tag}]" not in s:
+              today = datetime.date.today().isoformat()
+              link = f"[Tasmota {ver.lstrip('v')}](https://github.com/arendst/Tasmota/releases/tag/{ver})"
+              if rev == 1:
+                  body = (f"Built automatically on {link}.\n\n### Changed\n\n"
+                          f"- Based on Tasmota {ver.lstrip('v')}. The ir-rf additions are unchanged.\n")
+              else:
+                  body = (f"Rebuilt on {link}.\n\n### Changed\n\n"
+                          f"- New build of the current ir-rf additions.\n")
+              entry = f"## [{tag}] - {today}\n\n{body}\n**Hardware test:** pending\n"
+              s = s.replace(marker, marker + "\n\n" + entry, 1)
+              p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "Changelog: $TAG"
+          git push origin HEAD:main
+
+      - name: Publish the pre-release
+        if: env.SKIP != 'true'
+        run: |
+          python3 -I scripts/release_notes.py CHANGELOG.md "$TAG" > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" out/* --target "$(git rev-parse HEAD)" \
+              --prerelease --title "$TAG" --notes-file notes.md
+          fi

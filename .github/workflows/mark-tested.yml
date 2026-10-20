@@ -1,0 +1,59 @@
+name: Mark release as tested
+
+# After a release has run on a real box: records the test in CHANGELOG.md and
+# turns the pre-release into a normal release. Normal releases are what the
+# "Start upgrade" button on the box installs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release, e.g. v15.4.0-r1"
+        required: true
+      note:
+        description: "What was tested, e.g. IoTorero AR01V3: air conditioner on/off, fan speed and lights"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.inputs.tag }}
+      NOTE: ${{ github.event.inputs.note }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the test in the changelog
+        run: |
+          gh release view "$TAG" >/dev/null || { echo "::error::No release $TAG"; exit 1; }
+          python3 -I - <<'PY'
+          import os, re, datetime, pathlib
+          tag, note = os.environ["TAG"], os.environ["NOTE"].strip()
+          p = pathlib.Path("CHANGELOG.md")
+          s = p.read_text()
+          m = re.search(rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## \[|\Z)", s, re.M | re.S)
+          assert m, f"no section for {tag}"
+          today = datetime.date.today().isoformat()
+          line = f"**Hardware test:** passed on {today}: {note}"
+          body, n = re.subn(r"^\*\*Hardware test:\*\*.*$", lambda _: line, m.group(1), count=1, flags=re.M)
+          assert n == 1, "no 'Hardware test' line in the section"
+          p.write_text(s[:m.start(1)] + body + s[m.end(1):])
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "Changelog: $TAG tested"
+          git push origin HEAD:main
+
+      - name: Turn it into a normal release
+        run: |
+          python3 -I scripts/release_notes.py CHANGELOG.md "$TAG" > notes.md
+          gh release edit "$TAG" --prerelease=false --latest --notes-file notes.md

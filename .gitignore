@@ -1,0 +1,10 @@
+build_output/
+tasmota-src/
+.pio/
+*.bin
+
+# Claude Memory (shared via Git)
+.claude/*
+!.claude/memory/
+.claude/memory/*_local.md
+.claude/memory/*_secret.md
