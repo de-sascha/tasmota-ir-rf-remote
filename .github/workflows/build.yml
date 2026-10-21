@@ -140,6 +140,16 @@ jobs:
           strings out/tasmota32-ir-rf.bin | grep -q '"RfReceived"' || { echo "::error::Radio missing"; exit 1; }
           strings out/tasmota32-ir-rf.bin | grep -q 'IRHVAC'       || { echo "::error::IRHVAC missing"; exit 1; }
           strings out/tasmota32-ir-rf.bin | grep -q "ir-rf-r$REV"  || { echo "::error::Image name missing"; exit 1; }
+          strings out/tasmota32-ir-rf.bin | grep -q 'IR : carrier' || { echo "::error::Carrier self-check missing"; exit 1; }
+
+          # The IR carrier loop must run from IRAM (0x40080000-0x400A0000). From
+          # flash its speed depends on the code layout and the carrier drifts
+          # (r1: 28.7 kHz instead of 38).
+          ELF=tasmota-src/.pio/build/$PIO_ENV/firmware.elf
+          MARK=$(nm -C "$ELF" | awk '/ IRsend::mark\(unsigned short\)$/ {print $1}')
+          echo "IRsend::mark at 0x$MARK"
+          [ -n "$MARK" ] && [ $((16#$MARK)) -ge $((16#40080000)) ] && [ $((16#$MARK)) -lt $((16#400A0000)) ] \
+            || { echo "::error::IRsend::mark is not in IRAM, the IR carrier would drift"; exit 1; }
 
           (cd out && sha256sum tasmota32-ir-rf.bin tasmota32-ir-rf.factory.bin > SHA256SUMS.txt)
           cat out/SHA256SUMS.txt

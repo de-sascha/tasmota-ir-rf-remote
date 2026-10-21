@@ -18,7 +18,7 @@ building something half-changed.
 | `tasmota/include/tasmota_configurations.h` | In the `FIRMWARE_IR` block, `USE_RC_SWITCH` is switched on instead of off. | The official IR image deliberately leaves radio out. A `user_config_override.h` cannot undo it, because Tasmota reads that file *before* this block. |
 | `lib/lib_rf/rc-switch/src/RCSwitch.cpp` | Protocol 41 (CREATE ceiling fan) is appended. Empty slots up to 40 are filled with a placeholder. | Home Assistant and other automations refer to the protocol by number, so it must never move. If Tasmota itself ever ships 41 or more protocols, the script stops and asks for a new number. |
 | `tasmota/tasmota_xdrv_driver/xdrv_17_rcswitch.ino` | With log level 4 (`WebLog 4`), the raw pulse lengths of each received code are logged as `RFR: Raw …`. | To measure unknown remotes, see [rf-remotes.md](rf-remotes.md). Costs nothing at normal log levels. |
-| `lib/lib_basic/IRremoteESP8266/…/IRsend.cpp`, `IRtimer.cpp` and `xdrv_05_irremote_full.ino` | The infrared carrier loop runs from fast internal RAM (IRAM) and switches the LED directly. At start-up Tasmota measures the loop once and corrects the carrier period; the log shows `IR : ir-rf carrier calibrated …`. | The 38 kHz carrier is made in software, so its frequency depends on how fast the loop runs. From flash it came out at 28.7 kHz in r1 (official image: 34.7 kHz), and a GREE air conditioner took only 25 of 40 commands. Side effect: the IR LED sends one 65 ms burst at start-up; it carries no command. |
+| `lib/lib_basic/IRremoteESP8266/…/IRsend.cpp`, `IRtimer.cpp` and `xdrv_05_irremote_full.ino` | The infrared carrier loop runs from fast internal RAM (IRAM) and switches the LED directly. At start-up the box measures the loop, corrects the carrier period to 38 kHz and measures again. The result is in the log (`IR : carrier 38.x kHz OK …`, or an error outside 36-40 kHz), on the main page (*IR carrier*) and in the sensor telemetry (`"IR":{"Carrier":38.x}`). Without IR and radio pins, the main page shows a hint to set the template. | The 38 kHz carrier is made in software, so its frequency depends on how fast the loop runs. From flash it came out at 28.7 kHz in r1 (official image: 34.7 kHz), and a GREE air conditioner took only 25 of 40 commands. Side effect: the IR LED sends two 20 ms bursts at start-up; they carry no command. |
 
 `platformio_override.ini` defines the build `tasmota32-ir-rf`. It is the
 official `tasmota32-ir` plus the radio library folder `lib/lib_rf`, and it sets
@@ -69,6 +69,8 @@ same Tasmota version.
 - both files start like real ESP32 images
 - the update file fits into the box's app partition (2,949,120 bytes)
 - radio (`RfReceived`) and air-conditioner infrared (`IRHVAC`) are both inside
+- the infrared carrier self-check is inside, and the carrier loop lies in fast
+  internal RAM (IRAM), checked by the address of `IRsend::mark` in the build
 
 If a build fails, GitHub sends an e-mail. GitHub also pauses the Monday run
 after 60 days without any commit in the repository and sends an e-mail about

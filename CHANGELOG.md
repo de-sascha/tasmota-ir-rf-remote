@@ -11,6 +11,29 @@ means it has.
 
 <!-- releases: new entries go directly below this line -->
 
+## [v16.0.0-r3] - 2026-10-21
+
+Built on [Tasmota 16.0.0](https://github.com/arendst/Tasmota/releases/tag/v16.0.0).
+
+### Added
+
+- Carrier self-check: at start-up the box measures its infrared carrier,
+  corrects it and measures again. The result is in the log
+  (`IR : carrier 38.5 kHz OK …`, an error outside 36-40 kHz), on the main page
+  (*IR carrier*) and in the sensor telemetry (`"IR":{"Carrier":38.5}`).
+- Without infrared and radio pins, the main page shows a hint to paste the
+  template from the README.
+- Every build checks that the self-check is inside and that the carrier loop
+  runs from IRAM; a build without the fix fails.
+
+### Changed
+
+- The carrier correction rounds instead of cutting off: 38.5 kHz instead of
+  37.0 kHz on an AR01V3. The start-up bursts are 2 × 20 ms instead of 65 ms.
+
+**Hardware test:** pending.
+
+
 ## [v16.0.0-r2] - 2026-10-21
 
 Built on [Tasmota 16.0.0](https://github.com/arendst/Tasmota/releases/tag/v16.0.0).

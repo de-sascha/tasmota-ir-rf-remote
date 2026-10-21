@@ -176,7 +176,10 @@ that doubles as a programming port.
    Backlog Template {"NAME":"IR RF Remote","ARCH":"ESP32","GPIO":[32,0,0,0,0,0,0,1,0,0,0,0,0,0,1120,1152,0,0,0,0,0,1056,0,544,0,0,0,0,0,1088,0,0,0,0,0,0],"FLAG":0,"BASE":1}; Module 0
    ```
 
-   The box restarts. Without this step, infrared and radio do nothing.
+   The box restarts. Without this step, infrared and radio do nothing, and
+   the main page says *IR/RF pins: not set*. With it, the main page shows
+   **IR carrier 38.x kHz**: the box has measured and corrected its own
+   infrared signal, see [Troubleshooting](#troubleshooting).
 4. **Get updates from this project:** In the console, type `OtaUrl 1` and
    press Enter. From then on, the **Start upgrade** button fetches the newest
    tested release from here (see [Updating](#updating)).
@@ -280,7 +283,9 @@ upload*, as in [Install, way A](#a-your-box-already-runs-tasmota).
 
 | What you see | Likely cause | What to do |
 |---|---|---|
-| Infrared and radio do nothing at all | The template is missing. | Repeat [step 3 of First setup](#first-setup). |
+| Infrared and radio do nothing at all, main page says *IR/RF pins: not set* | The template is missing. | Repeat [step 3 of First setup](#first-setup). |
+| A device reacts only sometimes to infrared | Aim or distance, if the main page shows *IR carrier* between 36 and 40 kHz. The box cannot see whether a device reacted, only its own signal. | Give the box a clear line of sight to the device, or move it closer. |
+| Main page shows *IR carrier … ⚠ should be 36-40 kHz* | The firmware makes the infrared signal at the wrong frequency. That is a bug in this project. | Please [open an issue](../../issues) with the log line `IR : carrier …`. |
 | No `RfReceived` when you press the remote | The remote uses another frequency (315 or 868 MHz) or a rolling code (car keys, many garage doors). | Those cannot be copied with this box. |
 | The box receives the code, but the device ignores `RfSend` | The remote's timing sits between two of Tasmota's protocols. | Measure and rebuild it: [docs/rf-remotes.md](docs/rf-remotes.md). |
 | After an update, `RfSend` is an unknown command | The official Tasmota file was installed. | Install this project's file again and type `OtaUrl 1`. |
