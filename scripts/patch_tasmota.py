@@ -91,6 +91,93 @@ def log_raw_timings(src):
     p.write_text(s[:anchor.end()] + code + s[anchor.end():])
 
 
+def replace_once(s, old, new, where):
+    n = s.count(old)
+    if n != 1:
+        fail(f"expected exactly one '{old.strip()[:60]}' in {where}, found {n}")
+    return s.replace(old, new, 1)
+
+
+IR_HEADER = """
+#if defined(ESP32) && !defined(UNIT_TEST)
+// ir-rf: steady IR carrier on ESP32. The 38 kHz carrier is made in software, so
+// its frequency depends on how fast this loop runs from flash. Measured on an
+// AR01V3 (160 MHz): official tasmota32-ir 34.7 kHz, ir-rf r1 28.7 kHz, and at
+// 28.7 kHz a GREE air conditioner took only 25 of 40 commands (official 40/40).
+// Here the loop runs from IRAM, switches the LED by register and waits with the
+// ROM delay, and Tasmota measures it once at start-up (calibrate) and corrects
+// the period for every IRsend object through ir_rf_period_offset.
+#include "esp_attr.h"
+#include "esp_rom_sys.h"
+#include "esp_timer.h"
+#include "hal/gpio_ll.h"
+#define IRRF_IRAM IRAM_ATTR
+int8_t ir_rf_period_offset = 0;
+#define IRRF_PERIOD_OFFSET ir_rf_period_offset
+#else
+#define IRRF_IRAM
+#define IRRF_PERIOD_OFFSET kPeriodOffset
+#endif  // ir-rf
+"""
+
+
+def steady_ir_carrier(src):
+    lib = src / "lib/lib_basic/IRremoteESP8266/IRremoteESP8266/src"
+    p = lib / "IRsend.cpp"
+    s = p.read_text()
+    w = "IRsend.cpp"
+    s = replace_once(s, '#include "IRtimer.h"\n', '#include "IRtimer.h"\n' + IR_HEADER, w)
+    s = replace_once(s, "periodOffset(kPeriodOffset)", "periodOffset(IRRF_PERIOD_OFFSET)", w)
+    for fn, level in (("ledOff", "outputOff"), ("ledOn", "outputOn")):
+        s = replace_once(s, f"void IRsend::{fn}() {{\n#ifndef UNIT_TEST\n  digitalWrite(IRpin, {level});\n",
+                         f"void IRRF_IRAM IRsend::{fn}() {{\n#if defined(ESP32) && !defined(UNIT_TEST)\n"
+                         f"  gpio_ll_set_level(&GPIO, IRpin, {level});\n#elif !defined(UNIT_TEST)\n"
+                         f"  digitalWrite(IRpin, {level});\n", w)
+    s = replace_once(s, "void IRsend::_delayMicroseconds(uint32_t usec) {\n  // delayMicroseconds() is only accurate",
+                     "void IRRF_IRAM IRsend::_delayMicroseconds(uint32_t usec) {\n  // delayMicroseconds() is only accurate", w)
+    s = replace_once(s, "  if (usec <= kMaxAccurateUsecDelay) {\n#ifndef UNIT_TEST\n    delayMicroseconds(usec);\n",
+                     "  if (usec <= kMaxAccurateUsecDelay) {\n#if defined(ESP32) && !defined(UNIT_TEST)\n"
+                     "    esp_rom_delay_us(usec);\n#elif !defined(UNIT_TEST)\n    delayMicroseconds(usec);\n", w)
+    s = replace_once(s, "uint16_t IRsend::mark(uint16_t usec) {", "uint16_t IRRF_IRAM IRsend::mark(uint16_t usec) {", w)
+    s = replace_once(s, "void IRsend::space(uint32_t time) {", "void IRRF_IRAM IRsend::space(uint32_t time) {", w)
+    p.write_text(s)
+
+    p = lib / "IRtimer.cpp"
+    s = p.read_text()
+    w = "IRtimer.cpp"
+    s = replace_once(s, "#ifndef UNIT_TEST\n#include <Arduino.h>\n#endif\n",
+                     "#ifndef UNIT_TEST\n#include <Arduino.h>\n#endif\n"
+                     "#if defined(ESP32) && !defined(UNIT_TEST)  // ir-rf: see IRsend.cpp\n"
+                     "#include \"esp_attr.h\"\n#include \"esp_timer.h\"\n"
+                     "#define IRRF_IRAM IRAM_ATTR\n#define IRRF_MICROS() ((uint32_t)esp_timer_get_time())\n"
+                     "#else\n#define IRRF_IRAM\n#define IRRF_MICROS() micros()\n#endif\n", w)
+    s = replace_once(s, "IRtimer::IRtimer() { reset(); }", "IRRF_IRAM IRtimer::IRtimer() { reset(); }", w)
+    s = replace_once(s, "void IRtimer::reset() {\n#ifndef UNIT_TEST\n  start = micros();",
+                     "void IRRF_IRAM IRtimer::reset() {\n#ifndef UNIT_TEST\n  start = IRRF_MICROS();", w)
+    s = replace_once(s, "uint32_t IRtimer::elapsed() {\n#ifndef UNIT_TEST\n  uint32_t now = micros();",
+                     "uint32_t IRRF_IRAM IRtimer::elapsed() {\n#ifndef UNIT_TEST\n  uint32_t now = IRRF_MICROS();", w)
+    p.write_text(s)
+
+    p = src / "tasmota/tasmota_xdrv_driver/xdrv_05_irremote_full.ino"
+    s = p.read_text()
+    w = "xdrv_05_irremote_full.ino"
+    m = re.search(r"void IrInit\(void\) \{\n(.*?)\n\}\n", s, re.S)
+    if not m:
+        fail(f"function IrInit not found in {w}")
+    calib = (
+        "\n#ifdef ESP32\n"
+        "  if (ir_send_active) {  // ir-rf: measure the carrier loop once, see IRsend.cpp\n"
+        "    extern int8_t ir_rf_period_offset;\n"
+        "    IRsend cal = IrSendInitGPIO();\n"
+        "    ir_rf_period_offset = cal.calibrate(38000);\n"
+        "    AddLog(LOG_LEVEL_INFO, PSTR(\"IR : ir-rf carrier calibrated, period offset %d us (38 kHz = 26 us)\"), ir_rf_period_offset);\n"
+        "  }\n"
+        "#endif  // ESP32"
+    )
+    s = s[:m.end(1)] + calib + s[m.end(1):]
+    p.write_text(s)
+
+
 def main():
     if len(sys.argv) != 2:
         fail("usage: patch_tasmota.py <path-to-tasmota-src>")
@@ -100,6 +187,7 @@ def main():
     enable_rc_switch(src)
     upstream = add_fan_protocol(src)
     log_raw_timings(src)
+    steady_ir_carrier(src)
     print(f"patch_tasmota: ok ({upstream} upstream RF protocols, fan protocol {FAN_PROTOCOL})")
 
 

@@ -8,7 +8,7 @@ the project tiny and lets it follow new Tasmota versions on its own.
 
 ## What is changed in Tasmota
 
-`scripts/patch_tasmota.py` makes exactly three changes. It finds them by
+`scripts/patch_tasmota.py` makes exactly four changes. It finds them by
 text, not by line number, so it keeps working when Tasmota moves code around.
 If one of the places is missing, it stops with a clear message instead of
 building something half-changed.
@@ -18,6 +18,7 @@ building something half-changed.
 | `tasmota/include/tasmota_configurations.h` | In the `FIRMWARE_IR` block, `USE_RC_SWITCH` is switched on instead of off. | The official IR image deliberately leaves radio out. A `user_config_override.h` cannot undo it, because Tasmota reads that file *before* this block. |
 | `lib/lib_rf/rc-switch/src/RCSwitch.cpp` | Protocol 41 (CREATE ceiling fan) is appended. Empty slots up to 40 are filled with a placeholder. | Home Assistant and other automations refer to the protocol by number, so it must never move. If Tasmota itself ever ships 41 or more protocols, the script stops and asks for a new number. |
 | `tasmota/tasmota_xdrv_driver/xdrv_17_rcswitch.ino` | With log level 4 (`WebLog 4`), the raw pulse lengths of each received code are logged as `RFR: Raw …`. | To measure unknown remotes, see [rf-remotes.md](rf-remotes.md). Costs nothing at normal log levels. |
+| `lib/lib_basic/IRremoteESP8266/…/IRsend.cpp`, `IRtimer.cpp` and `xdrv_05_irremote_full.ino` | The infrared carrier loop runs from fast internal RAM (IRAM) and switches the LED directly. At start-up Tasmota measures the loop once and corrects the carrier period; the log shows `IR : ir-rf carrier calibrated …`. | The 38 kHz carrier is made in software, so its frequency depends on how fast the loop runs. From flash it came out at 28.7 kHz in r1 (official image: 34.7 kHz), and a GREE air conditioner took only 25 of 40 commands. Side effect: the IR LED sends one 65 ms burst at start-up; it carries no command. |
 
 `platformio_override.ini` defines the build `tasmota32-ir-rf`. It is the
 official `tasmota32-ir` plus the radio library folder `lib/lib_rf`, and it sets
