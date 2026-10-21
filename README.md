@@ -28,12 +28,12 @@
   </tr>
 </table>
 
-> [!CAUTION]
-> **Known issue (October 2026):** with this firmware, infrared commands to an air
-> conditioner arrive only about half the time from a few metres away. The official
-> `tasmota32-ir.bin` on the same box works every time. Radio and short TV codes are
-> fine. Until this is fixed there is no tested release, and boxes that control an
-> air conditioner should stay on the official firmware.
+> [!NOTE]
+> **Fixed in r2 (October 2026):** release r1 sent its infrared carrier at about
+> 28.7 kHz instead of 38 kHz, so air conditioners missed about a third of the
+> commands. From r2 on, the carrier is measured and corrected at start-up; a GREE
+> air conditioner then took 40 of 40 commands, like the official firmware. If a
+> box still shows `ir-rf-r1`, update it.
 
 ---
 
