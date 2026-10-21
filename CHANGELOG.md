@@ -42,7 +42,7 @@ Built on [Tasmota 15.4.0](https://github.com/arendst/Tasmota/releases/tag/v15.4.
   Test on the real air conditioner, from the box's own spot, 40 commands
   each: official 40/40, r1 25/40, test build of this fix 40/40.
 
-**Hardware test:** pending.
+**Hardware test:** passed on 2026-10-21: IoTorero AR01V3 at its usual spot, GREE air conditioner: IRHVAC on/off 40 of 40 (official tasmota32-ir 15.4.0 at the same spot: 40 of 40; r1: 25 of 40). CREATE ceiling fan via RfSend: 3 of 3. Carrier calibrated at start-up (period offset -1 us).
 
 
 ## [v16.0.0-r1] - 2026-10-20
