@@ -31,7 +31,7 @@ Built on [Tasmota 16.0.0](https://github.com/arendst/Tasmota/releases/tag/v16.0.
 - The carrier correction rounds instead of cutting off: 38.5 kHz instead of
   37.0 kHz on an AR01V3. The start-up bursts are 2 × 20 ms instead of 65 ms.
 
-**Hardware test:** pending.
+**Hardware test:** passed on 2026-10-21: IoTorero AR01V3 at its usual spot: carrier 38.5 kHz; GREE air conditioner: IRHVAC on/off 40 of 40 (official tasmota32-ir 16.0.0 at the same spot: 40 of 40); CREATE ceiling fan via RfSend: 3 of 3.
 
 
 ## [v16.0.0-r2] - 2026-10-21
